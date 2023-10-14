@@ -1,4 +1,7 @@
 from hh.parser.utils import fetch_json, fetch_html, get_author_variants, get_cited_num, get_text_or_none
+import httpx
+from hh.db import write_log
+
 
 
 async def get_pmid_list(limit, offset):
@@ -19,20 +22,29 @@ async def get_pmid_list(limit, offset):
     return idlist
 
 
-async def get_pmid_info(pmid):
+async def get_pmid_info(pmid, write_log=True):
     """
     Extract useful information
     """
-    root = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pmid}&retmode=xml"
-    src = await fetch_html(root)
-
-    # Attribute getters
     try:
+        root = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pmid}&retmode=xml"
+        src = await fetch_html(root)
+
+        # Attribute getters
         title = get_text_or_none(src.select_one("ArticleTitle"))
+        if title is None:
+            if write_log:
+                await write_log(f'{pmid} title is None', 'error')
+            raise Exception('title is none')
         authors = get_author_variants(src)
+        if len(authors) == 0:
+            if write_log:
+                await write_log(f'Cannot fetch author for {pmid}', 'error')
+            raise Exception('author error')
         keywords = src.select('Keyword')
-        if keywords is not None:
+        if len(keywords) > 0:
             keywords = [get_text_or_none(i) for i in keywords]
+
         journal = get_text_or_none(src.select_one('Title'))
         journal_abrev = get_text_or_none(src.select_one('ISOAbbreviation'))
         volume = get_text_or_none(src.select_one('Volume'))
@@ -47,10 +59,13 @@ async def get_pmid_info(pmid):
         reference_num = len([i for i in reference_id_list if i is not None])
         num_cite = await get_cited_num(pmid)
 
-    except Exception as e:
-        raise UserWarning(f'Error when parsing {pmid}')
 
-    return dict(title=title, authors=authors, keywords=keywords, journal=journal,
-                journal_abrev=journal_abrev, volume=volume, journal_issue=journal_issue,
-                year=year, month=month, page=page, doi=doi, reference_id_list=reference_id_list,
-                reference_num=reference_num, num_cite=num_cite)
+        return dict(title=title, authors=authors, keywords=keywords, journal=journal,
+                    journal_abrev=journal_abrev, volume=volume, journal_issue=journal_issue,
+                    year=year, month=month, page=page, doi=doi, reference_id_list=reference_id_list,
+                    reference_num=reference_num, num_cite=num_cite)
+
+    except httpx.ReadTimeout:
+        if write_log:
+            await write_log(f'HTTP timeout for {pmid}', 'fail')
+        raise Exception
