@@ -12,6 +12,9 @@ pytest = "^7.4.2"
 httpx = "^0.25.0"
 beautifulsoup4 = "^4.12.2"
 lxml = "^4.9.3"
+celery = "^5.3.6"
+pymongo = "^4.6.1"
+apscheduler = "^3.10.4"
 
 [build-system]
 requires = ["poetry-core"]
