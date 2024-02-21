@@ -65,6 +65,20 @@ twisted = ["twisted"]
 zookeeper = ["kazoo"]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "async-timeout"
+version = "4.0.3"
+description = "Timeout context manager for asyncio programs"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "async-timeout-4.0.3.tar.gz", hash = "sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f"},
+    {file = "async_timeout-4.0.3-py3-none-any.whl", hash = "sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028"},
+]
+
+[[package]]
+>>>>>>> refs/remotes/origin/v2
 name = "beautifulsoup4"
 version = "4.12.3"
 description = "Screen-scraping library"
@@ -679,6 +693,27 @@ files = [
 ]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "redis"
+version = "5.0.1"
+description = "Python client for Redis database and key-value store"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "redis-5.0.1-py3-none-any.whl", hash = "sha256:ed4802971884ae19d640775ba3b03aa2e7bd5e8fb8dfaed2decce4d0fc48391f"},
+    {file = "redis-5.0.1.tar.gz", hash = "sha256:0dab495cd5753069d3bc650a0dde8a8f9edde16fc5691b689a566eda58100d0f"},
+]
+
+[package.dependencies]
+async-timeout = {version = ">=4.0.2", markers = "python_full_version <= \"3.11.2\""}
+
+[package.extras]
+hiredis = ["hiredis (>=1.0.0)"]
+ocsp = ["cryptography (>=36.0.1)", "pyopenssl (==20.0.1)", "requests (>=2.26.0)"]
+
+[[package]]
+>>>>>>> refs/remotes/origin/v2
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -786,4 +821,8 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.13"
+<<<<<<< HEAD
 content-hash = "39ab4197616f20f12699dd405221ba3e3027f005a90ce79eea53d812b9c38709"
+=======
+content-hash = "7c09a6dc9e71cabb3e6a22d0899c0eb3e1c759f8497633d791b5bdf9451d1e5f"
+>>>>>>> refs/remotes/origin/v2
