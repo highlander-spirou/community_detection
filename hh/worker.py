@@ -2,21 +2,13 @@
 
 from celery import Celery
 import httpx
-import sqlite3
-from lib.db import connect_to_db, ensure_tbl
+import bs4
+from lib.sql import get_cache_value, save_cache, save_pmid_err
 
 worker = Celery('tasks', broker='redis://localhost:6379/0')
 
-# def ensure_tbl():
-#     conn = sqlite3.connect("kw_cache.db", timeout=10000)
-#     cursor = conn.cursor()   
-#     cursor.execute("CREATE TABLE IF NOT EXISTS cache_pmid (id INTEGER PRIMARY KEY AUTOINCREMENT, pmid INT, cached_value TEXT);")
-#     conn.commit()
-#     conn.close()
-
-
 class CrawlError(Exception):
-    def __init__():
+    def __init__(self):
         pass
 
 
@@ -26,16 +18,40 @@ def fetch_html(url):
     """
     with httpx.Client() as client:
         response = client.get(url)
+    return response.text
 
-    return bs4.BeautifulSoup(response.text, features="xml")
+
+def get_text_or_none(element):
+    """
+    Helper function to return None instead of get_text if the element is None
+    """
+    if element is not None:
+        return element.get_text()
+    else:
+        return None
 
 
-def get_pmid_info(pmid: int):
+def get_pmid_info(pmid: int) -> str:
     """
     Crawl the pmid information
+
+    Validate the `Title` field, if None, raise error
     """
+    prev_result = get_cache_value(pmid, "cache_pmids")
+    if prev_result is not None:
+        print(f"Get pmid {pmid} from cache")
+        return prev_result
+
     try:
         root = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pmid}&retmode=xml"
+        src = fetch_html(root)
+        src_bs4 = bs4.BeautifulSoup(src, features="xml")
+        title = get_text_or_none(src_bs4.select_one("ArticleTitle"))
+        if title is None:
+            raise CrawlError()
+        else:
+            save_cache(pmid, src, "cache_pmids")
+            return src
     except Exception:
         raise CrawlError()
 
@@ -46,6 +62,11 @@ def task_executor(pmid: int):
     Pop the pmid from the queue and process it
     """
     print("Processing pmid:", pmid)
+    try:
+        get_pmid_info(pmid)
+    except CrawlError:
+        save_pmid_err(pmid)
+
     # try:
     #     result = get_pmid_info(pmid)
     #     save_to_mongo(result)
@@ -54,23 +75,13 @@ def task_executor(pmid: int):
     #     save_failure(pmid)
 
 
-def save_to_mongo(pmid_info):
-    """
-    Save the pmid_info `json` to MongoDB records
-    """
-    return
-
 def ping_graph_scheduler(pmid):
     """
     Call the graph scheduler for successfull query 
     """
     return
 
-def save_failure(pmid):
-    """
-    Save the fail ids to redis to proceed re-crawl in the future
-    """
 
 
 if __name__ == "__main__":
-    ensure_tbl("cache_pmid")
+    get_pmid_info(1016300000)

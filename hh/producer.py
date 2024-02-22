@@ -3,38 +3,10 @@ import base64
 import sqlite3
 import httpx
 from celery import Celery
-from lib.db import connect_to_db, ensure_tbl
-
+# from lib.sql import connect_to_db, ensure_tbl, save_cache_table, check_cache
+from lib.sql import get_cache_value, save_cache
 
 producer = Celery('tasks', broker='redis://localhost:6379/0')
-
-# def ensure_tbl():
-#     conn = sqlite3.connect("kw_cache.db", timeout=10000)
-#     cursor = conn.cursor()   
-#     cursor.execute("CREATE TABLE IF NOT EXISTS cache_tbl (id INTEGER PRIMARY KEY AUTOINCREMENT, base64_data TEXT, cached_value TEXT);")
-#     conn.commit()
-#     conn.close()
-
-
-def check_cache(cache_str) -> str | None:
-    """
-    Check the cache, if exist, return the result
-    """
-    with connect_to_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT cached_value FROM cache_tbl WHERE base64_data = ?", (cache_str,))
-        result = c.fetchone()
-    
-    if result:
-        return result[0]
-    return None
-
-def save_cache_data(base_64_data, cached_value):
-    with connect_to_db() as conn:
-        c = conn.cursor()
-        c.execute("INSERT INTO cache_tbl (base64_data, cached_value) VALUES (?, ?)", (base_64_data, cached_value))
-        conn.commit()
-    
 
 def fetch_json(url, params):
     with httpx.Client() as client:
@@ -45,11 +17,10 @@ def get_pmid_list(**kwargs):
     
     kwargs_str = json.dumps(kwargs)
     kwargs_base64 = base64.b64encode(kwargs_str.encode('utf-8')).decode('utf-8') 
+    prev_result = get_cache_value(kwargs_base64, "cache_eutils")
 
-    prev_result = check_cache(kwargs_base64)
     if prev_result is None:
         # Crawl the data
-        
         url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
         default_keys = {
             "sort": "pub_date",
@@ -58,7 +29,7 @@ def get_pmid_list(**kwargs):
         params = kwargs | default_keys
         results = fetch_json(url, params)
         result_str = json.dumps(results)
-        save_cache_data(kwargs_base64, result_str)
+        save_cache(kwargs_base64, result_str, "cache_eutils")
         return results
 
     else:
@@ -80,7 +51,6 @@ def task_publisher(**kwargs):
 
 
 if __name__ == "__main__":
-    ensure_tbl("cache_tbl")
     params = {
         "db": "pubmed",
         "term": "biomedical data science",

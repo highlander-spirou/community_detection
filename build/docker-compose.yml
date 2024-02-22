@@ -1,0 +1,18 @@
+version: '3.1'
+
+services:
+  mysqldb:
+      image: mysql
+      networks:
+        - main-network
+      environment:
+        MYSQL_ROOT_PASSWORD: example
+      ports:
+        - "3306:3306"
+      volumes:
+        - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+
+networks:
+  main-network:
+  
