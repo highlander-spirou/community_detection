@@ -1,0 +1,17 @@
+version: '3.1'
+
+services:
+  airflow:
+      image: apache/airflow
+      networks:
+        - main-network
+      ports:
+        - "8080:8080"
+      volumes:
+        - ./airflow_assets:/opt/airflow
+      command: aiflow standalone
+
+
+networks:
+  main-network:
+  

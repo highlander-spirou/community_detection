@@ -2,6 +2,7 @@ CREATE USER 'accessuser'@'%' IDENTIFIED BY 'accesspwd';
 CREATE DATABASE cache_db;
 GRANT ALL PRIVILEGES ON cache_db.* TO 'accessuser'@'%';
 USE cache_db;
+
 -- Create tables
 CREATE TABLE cache_eutils (
   id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
