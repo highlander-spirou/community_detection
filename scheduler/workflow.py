@@ -68,6 +68,7 @@ class RedisLog(AbstractLog):
         self.redis = Redis(host=host, port=port, db=db)
 
     def init_store(self, init_dict):
+        self.init_dict = init_dict
         if not bool(self.redis.exists(self.store_name)):
             self.redis.hset(
                 self.store_name,
@@ -82,7 +83,10 @@ class RedisLog(AbstractLog):
         return status.decode('utf-8')
     
     def reset_log(self):
-        pass
+        self.redis.hset(
+            self.store_name,
+            mapping=self.init_dict
+        )
 
 def graph_str_process(g):
     dependencies = g.strip().split(",")
@@ -118,8 +122,8 @@ class Manager:
         self.Task_cls = task_cls
 
         # Post init
+        self.construct_graph()
         self.register_task(tasks)
-        self.construct_execution()
         self.create_log()
 
 
@@ -131,7 +135,7 @@ class Manager:
             else:
                 self.tasks[task.__name__] = self.Task_cls(task, task.__name__)
 
-    def construct_execution(self):
+    def construct_graph(self):
         g = graph_str_process(self.graph)
         self.order = [i for i in topological_sort(g)]
 
@@ -153,6 +157,9 @@ class Manager:
             else:
                 print(f"Task {task} has run, skipping ...")
             
+        # Return the task's log to PENDING for the next run
+        self.log_cls.reset_log()
+
 class Task(AbstractTask):
         """
         Extend function of AbstractTask

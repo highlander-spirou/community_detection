@@ -1,0 +1,25 @@
+services:
+  redis:
+    image: redis:7.2.4-alpine
+    networks:
+        - community-network
+    ports:
+        - "6379:6379"
+    volumes:
+      - ./volumes/redis:/data
+    
+  
+  mysql:
+      image: mysql
+      networks:
+        - community-network
+      env_file:
+        - .env
+      ports:
+        - "3306:3306"
+      volumes:
+        - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+        - ./volumes/mysql:/var/lib/mysql
+
+networks:
+  community-network:

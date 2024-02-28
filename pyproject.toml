@@ -4,6 +4,10 @@ version = "1.0.0"
 description = ""
 authors = ["shyn_le <highlandetspirou2812@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "scheduler" },
+]
+
 
 
 [tool.poetry.dependencies]
