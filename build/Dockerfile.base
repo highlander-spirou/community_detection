@@ -1,0 +1,6 @@
+FROM python:3.10.12-slim
+RUN pip install poetry==1.7.1
+WORKDIR /app
+COPY pyproject.toml poetry.lock README.md ./
+RUN poetry config virtualenvs.create false
+RUN poetry install --no-root

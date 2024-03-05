@@ -6,6 +6,8 @@ authors = ["shyn_le <highlandetspirou2812@gmail.com>"]
 readme = "README.md"
 packages = [
     { include = "scheduler" },
+    { include = "crawler" },
+    { include = "singleton" },
 ]
 
 
@@ -22,6 +24,7 @@ apscheduler = "^3.10.4"
 redis = "^5.0.1"
 mysql-connector-python = "^8.3.0"
 chainexecutor = {git = "https://github.com/highlander-spirou/chain_execute.git"}
+neo4j = "^5.18.0"
 
 [build-system]
 requires = ["poetry-core"]

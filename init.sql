@@ -25,4 +25,3 @@ CREATE TABLE pmid_errors (
 -- Prevent accident drop on tables
 REVOKE DROP ON cache_db.* FROM 'accessuser'@'%';
 FLUSH PRIVILEGES;
-

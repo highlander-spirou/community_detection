@@ -1,5 +1,5 @@
 import contextlib
-from mysql.connector import connect, Error
+from mysql.connector import connect
 from os import environ
 
 @contextlib.contextmanager
@@ -18,7 +18,7 @@ def connect_to_db():
         # if username is None or pwd is None:
         raise Exception("Missing environment variable")
 
-    conn = connect(host="localhost",user=username,password=pwd, database=db)
+    conn = connect(host=host,user=username,password=pwd, database=db)
     try:
         yield conn
     finally:
@@ -26,15 +26,14 @@ def connect_to_db():
 
 
 
-def get_cache_value(cache_key, tbl_name) -> str | None:
+def get_cache_value(cache_key, tbl_name):
     """
     Check the cache, if exist, return the result
     """
 
-
     query_templates = {
-        "cache_eutils": ("SELECT cached_value FROM cache_eutils " 
-        "WHERE base64_data = %s"),
+        "cache_eutils": "SELECT cached_value FROM cache_eutils WHERE base64_data = %s",
+        'cache_pmids': "SELECT cached_value FROM cache_pmids WHERE pmid = %s"
     }
 
     with connect_to_db() as conn:
@@ -55,6 +54,7 @@ def save_cache(cache_key, cache_value, tbl_name):
 
     query_templates = {
         "cache_eutils": "INSERT INTO cache_eutils (base64_data, cached_value) VALUES (%s, %s)",
+        "cache_pmids": "INSERT INTO cache_pmids (pmid, cached_value) VALUES (%s, %s)",
     }
 
     with connect_to_db() as conn:

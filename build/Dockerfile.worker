@@ -1,0 +1,9 @@
+FROM python_base_img:latest
+WORKDIR /app
+COPY ./crawler ./crawler
+COPY ./scheduler ./scheduler
+COPY ./singleton ./singleton
+
+RUN poetry install --only-root
+WORKDIR /app/crawler
+ENTRYPOINT ["poetry", "run", "celery", "-A", "worker", "worker", "-l", "INFO", "-c", "2"]

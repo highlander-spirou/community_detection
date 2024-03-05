@@ -1,0 +1,11 @@
+FROM python_base_img:latest
+WORKDIR /app
+COPY ./crawler ./crawler
+COPY ./scheduler ./scheduler
+COPY ./singleton ./singleton
+
+RUN poetry install --only-root
+
+COPY ./batch_crawl.py ./batch_crawl.py
+
+ENTRYPOINT ["poetry", "run", "python", "-u", "batch_crawl.py"]

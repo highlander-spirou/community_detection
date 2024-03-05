@@ -2,24 +2,70 @@ services:
   redis:
     image: redis:7.2.4-alpine
     networks:
-        - community-network
+      - community-network
     ports:
-        - "6379:6379"
+      - "6379:6379"
     volumes:
       - ./volumes/redis:/data
     
-  
   mysql:
-      image: mysql
-      networks:
-        - community-network
-      env_file:
-        - .env
-      ports:
-        - "3306:3306"
-      volumes:
-        - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-        - ./volumes/mysql:/var/lib/mysql
+    image: mysql
+    networks:
+      - community-network
+    env_file:
+      - .env
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./volumes/mysql:/var/lib/mysql
+
+  neo4j:
+    image: neo4j:5.17.0-community-bullseye
+    networks:
+      - community-network
+    hostname: neo4j
+    environment:
+      - NEO4J_dbms_security_procedures_unrestricted=gds.*
+      - NEO4J_dbms_security_procedures_whitelist=gds.*
+      - NEO4J_server_config_strict__validation_enabled=false
+    env_file:
+      - .env
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - ./volumes/neo4j/data:/data
+      - ./volumes/neo4j/plugins:/plugins
+
+  daily_crawl:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile.daily
+    env_file:
+      - .env
+    networks:
+      - community-network
+
+  batch_crawl:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile.batch
+    env_file:
+      - .env
+    networks:
+      - community-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile.worker
+    env_file:
+      - .env
+    networks:
+      - community-network
+
+
 
 networks:
   community-network:

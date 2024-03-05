@@ -1,185 +1,152 @@
-"""
-Define the workflow
-"""
-from functools import partial
-from networkx import topological_sort, DiGraph
+from networkx import DiGraph, topological_sort
+from abc import ABC
 from redis import Redis
-from abc import ABC, abstractmethod
-from typing import Literal
+import json
+import functools
+from os import environ
 
-class AbstractTask(ABC):
+
+def RedisDecode(func):
     """
-    Abstract task, receive a task name, task func, task default parameters 
-    
-    Compile to partial function
+    This function decode the dependency argument fetch from redis to python string
+
+    When json string is stored inside of Redis, it preserve the `""` sign, makes the string non-native
+
+    This function removes the need to call json.loads() on every function in a TaskManager node
     """
-    def __init__(self, task_func, task_name: str | None, **default_params):
-        self.task_name = task_name
-        if len(default_params.keys()) == 0:
-            self.partial_fn = partial(task_func)
-        else:
-            self.partial_fn = partial(task_func, **default_params)
+    @functools.wraps(func)
+    def wrapper(json_dependency):
+        dependency = json.loads(json_dependency)
+        return func(dependency)
+    return wrapper
 
-    @abstractmethod
-    def __call__(self):
-        """
-        Run the `Task` by make it callable
-        """
-        pass
 
-class AbstractLog(ABC):
 
-    @abstractmethod
-    def init_store(self, *args, **kwargs):
-        """
-        Register task with default state ("PENDING")
-        """
-        pass
+class TaskError(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
 
-    @abstractmethod
-    def check_task_status(self, key) -> Literal["PENDING", "RUNNING", "SUCCESS", "FAIL"]:
-        """
-        Check for the status of a task
-        """
-        pass
 
-    @abstractmethod
-    def update_task_status(self, key, value:Literal["PENDING", "RUNNING", "SUCCESS", "FAIL"]):
-        """
-        Update task with one of 4 statuses:
+def get_node_dependent_node(graph, node_name):
+    preds_depdends = []
+    predecessors = list(graph.predecessors(node_name))
+    for predecessor in predecessors:
+        edge_data = graph.get_edge_data(predecessor, node_name)
+        if edge_data['pass_kw']:
+            preds_depdends.append(predecessor)
+    return preds_depdends
 
-        - PENDING: Default state, task has been registered but has not been ran
-        - RUNNING: Task is running
-        - SUCCESS: Task executed
-        - FAIL: Task fail to execute
-        """
-        pass
 
-    @abstractmethod
-    def reset_log(self):
-        """
-        Restore all tasks to `PENDING` if all tasks success
-        """
-        pass
+class BaseTask(ABC):
+    def __init__(self, func, func_name:str|None=None, *args) -> None:
+        self.func = func
+        self.func_name = func_name
+        self.defaults = args
 
-class RedisLog(AbstractLog):
-    def __init__(self, store_name, host='localhost', port=6379, db=1):
-        self.store_name = store_name
+
+class RedisLog:
+    def __init__(self, host='localhost', port=6379, db=1) -> None:
         self.redis = Redis(host=host, port=port, db=db)
 
-    def init_store(self, init_dict):
-        self.init_dict = init_dict
-        if not bool(self.redis.exists(self.store_name)):
-            self.redis.hset(
-                self.store_name,
-                mapping=init_dict
-            )
+    def add_string(self, store_name, key:str, value:str):
+        self.redis.hset(store_name, key, value)
+
+    def add_dict(self, store_name, mapping):
+        self.redis.hset(store_name, mapping=mapping)
+
+    def get_value(self, store_name, key):
+        value = self.redis.hget(store_name, key)
+        if value is not None:
+            return value.decode('utf-8')
         
-    def update_task_status(self, key, value):
-        self.redis.hset(self.store_name, key, value)
-
-    def check_task_status(self, key):
-        status = self.redis.hget(self.store_name, key)
-        return status.decode('utf-8')
     
-    def reset_log(self):
-        self.redis.hset(
-            self.store_name,
-            mapping=self.init_dict
-        )
 
-def graph_str_process(g):
-    dependencies = g.strip().split(",")
-    dep_nodes = []
-    for dep in dependencies:
-        dep_stripped = dep.strip()
-        nodes = [i.strip() for i in dep_stripped.split(">")]
-        dep_nodes.append(nodes)
 
-    graph = DiGraph()
-    for i in dep_nodes:
-        graph.add_node(i[0])
-        graph.add_node(i[1])
-        graph.add_edge(i[0], i[1])
-    return graph
-
-class Manager:
-    def __init__(self, tasks:list, graph:str, task_cls:AbstractTask, log_cls:AbstractLog):
-        """
-        @tasks: list of functions or tuple of func with default kwargs
-            - [func1, (func2, {'a': 1, 'b', 2})]
-
-        @graph: Inspired by mermaid.js task flow
-            ```
-            task_1 > task_2
-            task_2 > task_3
-            ```
-        @task_cls: Dependency injection of AbstractTask, a constructor to create `Task`
-        @log_cls: Dependency injection of AbstractLog
-        """
+class TaskManager:
+    def __init__(self, graph:str, tasks, db=1) -> None:
         self.graph = graph
-        self.log_cls = log_cls
-        self.Task_cls = task_cls
-
+        self.tasks = tasks
+        redis_host = environ.get('REDIS_HOST')
+        if redis_host is None:
+            raise Exception("Environment variable REDIS_HOST not found")
+        self.store = RedisLog(host=redis_host, db=db)
+    
         # Post init
         self.construct_graph()
-        self.register_task(tasks)
-        self.create_log()
+        self.register_tasks()
 
-
-    def register_task(self, tasks):
-        self.tasks: dict[str, callable] = {}
-        for task in tasks:
-            if type(task) == tuple:
-                self.tasks[task[0].__name__] = self.Task_cls(task[0], task[0].__name__, task[1])
-            else:
-                self.tasks[task.__name__] = self.Task_cls(task, task.__name__)
 
     def construct_graph(self):
-        g = graph_str_process(self.graph)
-        self.order = [i for i in topological_sort(g)]
+        graph = DiGraph()
+
+        rows = self.graph.strip().split(',')
+        rows = [i.strip() for i in rows]
+
+        for row in rows:
+            elem = row.split(' ')
+            prev_node = elem[0]
+            next_node = elem[2]
+            graph.add_node(prev_node)
+            graph.add_node(next_node)
+
+            if elem[1] == '>>':
+                graph.add_edge(prev_node, next_node, pass_kw=True)
+            else:
+                graph.add_edge(prev_node, next_node, pass_kw=False)
+
+        self.digraph = graph
+        self.order = [i for i in topological_sort(graph)]
+        self.create_log()
 
     def create_log(self):
-        init_dict = {i: "PENDING" for i in self.order} 
-        self.log_cls.init_store(init_dict)
+        init_dict = {i: "PENDING" for i in self.order}
+        self.store.add_dict('status', mapping=init_dict)
 
-    def run_tasks(self):
-        for task in self.order:
-            task_status = self.log_cls.check_task_status(task)
+
+
+    def register_tasks(self):
+        self.task_registered = {}
+        for i in self.tasks:
+            self.task_registered[i.__name__] = i
+
+    
+    def get_task_results(self, task_name):
+        return self.store.get_value("graph_results", task_name)
+
+
+    def run_pipeline(self):
+        for i in self.order:
+            task_status = self.store.get_value('status', i)
             if task_status in ('PENDING', 'FAIL'):
+                self.store.add_dict('status', {i: 'RUNNING'})
+                dep = get_node_dependent_node(self.digraph, i)
+                if len(dep) > 0:
+                    for j in dep:
+                        arg = self.store.get_value("graph_results", j)
+                        if arg == 'invalid' or arg == None:
+                            raise Exception("The predcessor function is not JSON serializable")
+                        try:
+                            result = self.task_registered[i](arg)
+                            self.store.add_dict('status', {i: 'SUCCESS'})
+                        except:
+                            self.store.add_dict('status', {i: 'FAIL'})
+                            raise TaskError()
+                else:
+                    try:
+                        result = self.task_registered[i]()
+                        self.store.add_dict('status', {i: 'SUCCESS'})
+                    except:
+                        self.store.add_dict('status', {i: 'FAIL'})
+                        raise TaskError()
+
                 try:
-                    self.log_cls.update_task_status(task, 'RUNNING')
-                    self.tasks[task]()
-                    self.log_cls.update_task_status(task, 'SUCCESS')
-                except Exception:
-                    self.log_cls.update_task_status(task, 'FAIL')
-                    raise Exception(f"Fail running task {task}")
+                    json_result = json.dumps(result, ensure_ascii=False)
+                    self.store.add_dict("graph_results", mapping={str(i): json_result})
+                except:
+                    self.store.add_dict("graph_results", mapping={str(i): 'invalid'})
+
             else:
-                print(f"Task {task} has run, skipping ...")
-            
-        # Return the task's log to PENDING for the next run
-        self.log_cls.reset_log()
+                print(f'Task {i} already ran, pass ...')
+                pass
 
-class Task(AbstractTask):
-        """
-        Extend function of AbstractTask
-
-        This `Task` class run the `self.partial_fn` using `callable` method
-        """
-        def __init__(self, task_func, task_name: str | None, **default_params):
-            super().__init__(task_func, task_name, **default_params)
-
-        def __call__(self, *args, **kwargs):
-            self.partial_fn(*args, **kwargs)
-
-
-#     graph = """
-#         tinh_di > chui,
-#         chui > kq,
-#         kq > chui_nua
-# """
-
-#     log_cls = RedisLog("hello_world")
-
-#     man = Manager(tasks=[tinh_di, chui_nua, chui, kq], graph=graph, task_cls=Task, log_cls=log_cls)
-#     man.run_tasks()
+        self.create_log()
